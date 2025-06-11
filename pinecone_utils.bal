@@ -96,45 +96,6 @@ public isolated function convertFilters(MetadataFilters filters) returns map<any
     return result;
 }
 
-// Validate sparse vector
-public isolated function validateSparseVector(SparseVector? sparseVector) returns ai:Error? {
-    if sparseVector is () {
-        return ();
-    }
-    if sparseVector.indices.length() != sparseVector.values.length() {
-        return error ai:Error("Sparse vector indices and values arrays must have the same length");
-    }
-    
-    if sparseVector.indices.length() > 1000 {
-        return error ai:Error("Sparse vector cannot have more than 1000 non-zero values");
-    }
-    
-    // Check if indices are sorted and unique
-    int[] indices = sparseVector.indices;
-    int i = 0;
-    while i < indices.length() - 1 {
-        if indices[i] >= indices[i + 1] {
-            return error ai:Error("Sparse vector indices must be sorted in ascending order and unique");
-        }
-        i += 1;
-    }
-    
-    return ();
-}
-
-// Scale dense vector for hybrid search
-public isolated function scaleVector(float[] vector, float scale) returns float[] {
-    return from float value in vector
-           select value * scale;
-}
-
-// Scale sparse vector for hybrid search
-public isolated function scaleSparseVector(SparseVector sparseValues, float scale) returns SparseVector {
-    float[] scaledValues = from float value in sparseValues.values
-                            select value * scale;
-        
-    return {
-        indices: sparseValues.indices,
-        values: scaledValues
-    };
+public isolated function bm25(string document) returns ai:SparseVector {
+    return {indices: [], values: []};
 }

@@ -19,128 +19,111 @@ import ballerina/log;
 import ballerina/uuid;
 import ballerinax/pinecone.vector;
 
-// Default batch size for operations
-const int DEFAULT_BATCH_SIZE = 100;
-
 // Pinecone Vector Store implementation with hybrid search support
 public isolated class PineconeVectorStore {
     *ai:VectorStore;
 
     private final vector:Client pineconeClient;
-
-    private final SparseVector sparseVector;
-    private final VectorStoreQueryMode mode;
+    private final ai:VectorStoreQueryMode queryMode;
     private final string namespace;
-    private final int batchSize;
-    private final float defaultAlpha;
     private final MetadataFilters filters;
 
-    public isolated function init(string apiKey, string serviceUrl, VectorStoreQueryMode mode, PineconeConfigs conf = {}) returns ai:Error? {
-        vector:Client|error pineconeIndexClient = new ({apiKey: apiKey}, serviceUrl);
+    public isolated function init(string apiKey, string serviceUrl, ai:VectorStoreQueryMode queryMode = ai:DENSE, PineconeConfigs conf = {}) returns ai:Error? {
+        vector:Client|error pineconeIndexClient = new ({apiKey}, serviceUrl);
         if pineconeIndexClient is error {
-            return error ai:Error("Failed to initialize Pinecone vector store", pineconeIndexClient);
+            return error ai:Error("Failed to initialize pinecone vector store", pineconeIndexClient);
         }
-
+        
         self.pineconeClient = pineconeIndexClient;
+        self.queryMode = queryMode;
         self.namespace = conf?.namespace ?: "";
-        self.batchSize = conf?.batchSize ?: DEFAULT_BATCH_SIZE;
         self.filters = conf.filters.clone() ?: {};
-        self.defaultAlpha = conf.alpha;
-        self.sparseVector = conf.sparseVector.clone() ?: {indices: [], values: []};
-        self.mode = mode;
     }
 
-    // Add vector entries to the index with sparse vector support and batch processing
     public isolated function add(ai:VectorEntry[] entries) returns ai:Error? {
         if entries.length() == 0 {
             return;
         }
 
-        // Process entries in batches
-        int totalEntries = entries.length();
-        int processed = 0;
+        vector:Vector[] vectors = [];
+        foreach ai:VectorEntry entry in entries {
+            map<anydata> metadata = entry.document?.metadata ?: {};
+            metadata["document"] = entry.document.content;
+            float[]|ai:SparseVector embedding = entry.embedding;
 
-        while processed < totalEntries {
-            int endIndex = processed + self.batchSize;
-            if endIndex > totalEntries {
-                endIndex = totalEntries;
+            if self.queryMode == ai:DENSE && embedding !is float[] {
+                return error ai:Error("Dense query mode requires float[] embedding, but sparse vector provided");
             }
 
-            ai:VectorEntry[] batch = entries.slice(processed, endIndex);
-
-            vector:Vector[] vectors = [];
-            foreach ai:VectorEntry entry in batch {
-                // Validate sparse vector if present
-                if entry.sparseVector is SparseVector {
-                    check validateSparseVector(entry.sparseVector);
-                }
-
-                map<anydata> metadata = entry?.document.metadata ?: {};
-                metadata["document"] = entry.document.content;
-
-                vector:Vector vectorRecord = {
+            if self.queryMode == ai:SPARSE && embedding !is ai:SparseVector {
+                return error ai:Error("Sparse query mode requires sparse vector embedding, but dense vector provided");
+            }
+            
+            vector:Vector vec = embedding is float[] ? {
                     id: uuid:createRandomUuid(),
-                    values: entry.embedding,
-                    metadata: metadata
+                    values: embedding,
+                    metadata
+                } : {
+                    id: uuid:createRandomUuid(),
+                    sparseValues: embedding,
+                    metadata
                 };
 
-                // Add sparse values if present
-                if entry.sparseVector is SparseVector {
-                    vectorRecord.sparseValues = entry.sparseVector;
-                }
-
-                vectors.push(vectorRecord);
+            if self.queryMode == ai:HYBRID && embedding !is ai:SparseVector {
+                vec.sparseValues = bm25(entry.document.content);
             }
 
-            vector:UpsertRequest request = {
-                vectors: vectors
-            };
+            vectors.push(vec);
+        }
 
+        vector:UpsertRequest request = {
+            vectors: vectors
+        };
+
+        // Add namespace if specified
+        if self.namespace != "" {
             request.namespace = self.namespace;
+        }
 
-            vector:UpsertResponse|error response = self.pineconeClient->/vectors/upsert.post(request);
-            if response is error {
-                log:printError("Failed to add vector entries", response);
-            }
-
-            processed = endIndex;
+        vector:UpsertResponse|error response = self.pineconeClient->/vectors/upsert.post(request);
+        if response is error {
+            log:printError("Failed to add vector entry", response);
+            return error ai:Error("Failed to add vector entry", response);
         }
     }
 
-    // Query vectors from the index with hybrid search support
-    public isolated function query(float[] queryEmbedding, int similarityTopK) returns ai:VectorMatch[]|ai:Error {
+    public isolated function query(ai:QueryVector queryVector) returns ai:VectorMatch[]|ai:Error {
+        float[]? embedding = queryVector.embedding;
+        ai:SparseVector|string? sparseVector = queryVector.sparseVectorOrQuery;
+        
+        if sparseVector is string {
+            sparseVector = bm25(sparseVector);
+        }
+
         vector:QueryRequest request = {
-            topK: similarityTopK,
-            includeValues: true,
-            includeMetadata: true,
-            vector: queryEmbedding
+            topK: 2
         };
 
-        // Set sparse vector for sparse/hybrid search
-        SparseVector localSparse;
-        lock {
-            localSparse = self.sparseVector.clone();
+        if embedding is float[] {
+            request.vector = embedding;
         }
-        check validateSparseVector(localSparse);
-        request.sparseVector = localSparse;
-
-        // Handle hybrid search with alpha parameter
-        if self.mode == HYBRID {
-            float alpha = self.defaultAlpha;
-
-            // Scale dense and sparse vectors based on alpha
-            if request.vector is float[] && request.sparseVector is SparseVector {
-                request.vector = scaleVector(request.vector ?: [], alpha);
-                request.sparseVector = scaleSparseVector(request.sparseVector ?: {indices: [], values: []}, 1.0 - alpha);
+        
+        if sparseVector is ai:SparseVector && self.queryMode == ai:SPARSE {
+            request.sparseVector = sparseVector;
+        }
+        
+        if self.queryMode == ai:HYBRID {
+            if embedding !is float[] || sparseVector !is ai:SparseVector {
+                return error ai:Error("sparse and dense values are not provided");
             }
-        } else if self.mode == SPARSE {
-            request.vector = ();
-        } else if self.mode == DENSE {
-            request.sparseVector = ();
+            request.vector = embedding;
+            request.sparseVector = sparseVector;
         }
 
         // Add namespace if specified
-        request.namespace = self.namespace;
+        if self.namespace != "" {
+            request.namespace = self.namespace;
+        }
 
         // Add filters if specified
         map<anydata> localFilterMap = {};
@@ -153,14 +136,14 @@ public isolated class PineconeVectorStore {
 
         vector:QueryResponse|error response = self.pineconeClient->/query.post(request);
         if response is error {
-            return error ai:Error("Failed to query matching vectors", response);
+            return error ai:Error("Failed to obtain matching vectors", response);
         }
-
+        
         vector:QueryMatch[]? matches = response?.matches;
         if matches is () {
             return [];
         }
-
+        
         return from vector:QueryMatch item in matches
             select {
                 score: item?.score ?: 0.0,
@@ -184,7 +167,9 @@ public isolated class PineconeVectorStore {
             filter: filter
         };
 
-        request.namespace = self.namespace;
+        if self.namespace != "" {
+            request.namespace = self.namespace;
+        }
 
         vector:DeleteResponse|error response = self.pineconeClient->/vectors/delete.post(request);
         if response is error {

@@ -14,6 +14,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
+import ballerina/ai;
+
 // The unique ID of a vector
 public type VectorId string;
 
@@ -29,13 +31,5 @@ public type PineconeConfigs record {
     int batchSize?;
     float alpha = 0.5;
     MetadataFilters filters?;
-    SparseVector sparseVector?;
-};
-
-// Pinecone vector record
-public type PineconeVector record {
-    VectorId id?;
-    VectorData values?;
-    SparseVector sparseValues?;
-    map<anydata> metadata?;
+    ai:SparseVector sparseVector?;
 };
