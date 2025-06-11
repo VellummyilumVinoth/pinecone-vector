@@ -1,0 +1,14 @@
+[package]
+org = "vinoth"
+name = "pinecone_vector"
+version = "0.1.0"
+distribution = "2201.12.6"
+
+[build-options]
+observabilityIncluded = true
+
+[[dependency]]
+org="ballerina"
+name="ai"
+version="1.0.1"
+repository="local"
