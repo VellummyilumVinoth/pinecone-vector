@@ -28,7 +28,7 @@ public isolated class PineconeVectorStore {
     private final string namespace;
     private final MetadataFilters filters;
 
-    public isolated function init(string apiKey, string serviceUrl, ai:VectorStoreQueryMode queryMode = ai:DENSE,
+    public isolated function init(string serviceUrl, string apiKey, ai:VectorStoreQueryMode queryMode = ai:DENSE,
             PineconeConfigs conf = {}) returns ai:Error? {
         vector:Client|error pineconeIndexClient = new ({apiKey}, serviceUrl);
         if pineconeIndexClient is error {
