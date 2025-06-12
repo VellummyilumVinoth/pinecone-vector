@@ -19,7 +19,15 @@ import ballerina/log;
 import ballerina/uuid;
 import ballerinax/pinecone.vector;
 
-// Pinecone Vector Store implementation with hybrid search support
+# Pinecone Vector Store implementation with support for Dense, Sparse, and Hybrid vector search modes.
+# 
+# This class implements the ai:VectorStore interface and integrates with the Pinecone vector database
+# to provide functionality for vector upsert, query, and deletion.
+# 
+# - pineconeClient: Underlying client used to communicate with Pinecone.
+# - queryMode: The search mode (DENSE, SPARSE, or HYBRID).
+# - namespace: Optional namespace to isolate vectors within Pinecone.
+# - filters: Metadata filters applied during search.
 public isolated class PineconeVectorStore {
     *ai:VectorStore;
 
@@ -28,6 +36,14 @@ public isolated class PineconeVectorStore {
     private final string namespace;
     private final MetadataFilters filters;
 
+    # Initializes the PineconeVectorStore with the given configuration.
+    #
+    # + serviceUrl - URL of the Pinecone API service.
+    # + apiKey - Pinecone API key for authentication.
+    # + queryMode - Vector query mode (defaults to ai:DENSE).
+    # + conf - Additional Pinecone configurations like namespace and filters.
+    #
+    # + return - An ai:Error if the initialization fails, else ().
     public isolated function init(string serviceUrl, string apiKey, ai:VectorStoreQueryMode queryMode = ai:DENSE,
             PineconeConfigs conf = {}) returns ai:Error? {
         vector:Client|error pineconeIndexClient = new ({apiKey}, serviceUrl);
@@ -41,6 +57,11 @@ public isolated class PineconeVectorStore {
         self.filters = conf.filters.clone() ?: {};
     }
 
+    # Adds the given vector entries to the Pinecone vector store.
+    #
+    # + entries - An array of ai:VectorEntry values to be added.
+    #
+    # + return - An ai:Error if vector addition fails, else ().
     public isolated function add(ai:VectorEntry[] entries) returns ai:Error? {
         if entries.length() == 0 {
             return;
@@ -118,6 +139,11 @@ public isolated class PineconeVectorStore {
         }
     }
 
+    # Queries Pinecone using the provided embedding vector and returns the top matches.
+    #
+    # + queryVector - The embedding vector to query against. Should match the configured query mode.
+    #
+    # + return - A list of matching ai:VectorMatch values, or an ai:Error on failure.
     public isolated function query(ai:EmbeddingVector queryVector) returns ai:VectorMatch[]|ai:Error {
         vector:QueryRequest request = {
             topK: 2,
@@ -179,6 +205,11 @@ public isolated class PineconeVectorStore {
             };
     }
 
+    # Deletes vector entries from the store that match the given reference document ID.
+    #
+    # + refDocId - The document ID to match against the metadata field "document".
+    #
+    # + return - An ai:Error if the deletion fails, else ().
     public isolated function delete(string refDocId) returns ai:Error? {
         map<anydata> filter = {
             "document": {
