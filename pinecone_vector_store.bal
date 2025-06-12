@@ -121,7 +121,8 @@ public isolated class PineconeVectorStore {
     public isolated function query(ai:EmbeddingVector queryVector) returns ai:VectorMatch[]|ai:Error {
         vector:QueryRequest request = {
             topK: 2,
-            includeMetadata: true
+            includeMetadata: true,
+            includeValues: true
         };
 
         if queryVector is ai:DenseVector {
