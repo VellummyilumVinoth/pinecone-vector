@@ -14,6 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
+import ballerina/ai;
 // Metadata filter for vector search
 public type MetadataFilter record {
     string key;
@@ -25,4 +26,14 @@ public type MetadataFilter record {
 public type MetadataFilters record {
     MetadataFilter[] filter?;
     string condition?; // "and", "or"
+};
+
+
+// Configuration for Pinecone Vector Store
+public type PineconeConfigs record {
+    string namespace?;
+    int batchSize?;
+    float alpha = 0.5;
+    MetadataFilters filters?;
+    ai:SparseVector sparseVector?;
 };

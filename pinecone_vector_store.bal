@@ -28,12 +28,13 @@ public isolated class PineconeVectorStore {
     private final string namespace;
     private final MetadataFilters filters;
 
-    public isolated function init(string apiKey, string serviceUrl, ai:VectorStoreQueryMode queryMode = ai:DENSE, PineconeConfigs conf = {}) returns ai:Error? {
+    public isolated function init(string apiKey, string serviceUrl, ai:VectorStoreQueryMode queryMode = ai:DENSE,
+            PineconeConfigs conf = {}) returns ai:Error? {
         vector:Client|error pineconeIndexClient = new ({apiKey}, serviceUrl);
         if pineconeIndexClient is error {
             return error ai:Error("Failed to initialize pinecone vector store", pineconeIndexClient);
         }
-        
+
         self.pineconeClient = pineconeIndexClient;
         self.queryMode = queryMode;
         self.namespace = conf?.namespace ?: "";
@@ -49,28 +50,54 @@ public isolated class PineconeVectorStore {
         foreach ai:VectorEntry entry in entries {
             map<anydata> metadata = entry.document?.metadata ?: {};
             metadata["document"] = entry.document.content;
-            float[]|ai:SparseVector embedding = entry.embedding;
+            ai:EmbeddingVector embedding = entry.embedding;
 
-            if self.queryMode == ai:DENSE && embedding !is float[] {
-                return error ai:Error("Dense query mode requires float[] embedding, but sparse vector provided");
-            }
+            vector:Vector vec;
 
-            if self.queryMode == ai:SPARSE && embedding !is ai:SparseVector {
-                return error ai:Error("Sparse query mode requires sparse vector embedding, but dense vector provided");
-            }
-            
-            vector:Vector vec = embedding is float[] ? {
-                    id: uuid:createRandomUuid(),
-                    values: embedding,
-                    metadata
-                } : {
-                    id: uuid:createRandomUuid(),
-                    sparseValues: embedding,
-                    metadata
-                };
-
-            if self.queryMode == ai:HYBRID && embedding !is ai:SparseVector {
-                vec.sparseValues = bm25(entry.document.content);
+            if self.queryMode == ai:DENSE {
+                if embedding is ai:DenseVector {
+                    vec = {
+                        id: uuid:createRandomUuid(),
+                        values: embedding,
+                        metadata
+                    };
+                } else {
+                    return error ai:Error("Dense mode requires DenseVector embedding.");
+                }
+            } else if self.queryMode == ai:SPARSE {
+                if embedding is ai:SparseVector {
+                    vec = {
+                        id: uuid:createRandomUuid(),
+                        sparseValues: embedding,
+                        metadata
+                    };
+                } else {
+                    return error ai:Error("Sparse mode requires SparseVector embedding.");
+                }
+            } else if self.queryMode == ai:HYBRID {
+                if embedding is ai:HybridEmbedding {
+                    if embedding.dense.length() == 0 && embedding.sparse.indices.length() == 0 {
+                        return error ai:Error("Hybrid mode requires both dense and sparse vectors, but one or both are missing.");
+                    }
+                    vec = {
+                        id: uuid:createRandomUuid(),
+                        values: embedding.dense,
+                        sparseValues: embedding.sparse,
+                        metadata
+                    };
+                } else if embedding is ai:DenseVector {
+                    // Accept DenseVector but warn if sparse is expected for hybrid effectiveness
+                    vec = {
+                        id: uuid:createRandomUuid(),
+                        values: embedding,
+                        sparseValues: bm25(entry.document.content), // Auto-generate sparse if needed
+                        metadata
+                    };
+                } else {
+                    return error ai:Error("Hybrid mode requires either HybridEmbedding or DenseVector with auto-generated sparse values.");
+                }
+            } else {
+                return error ai:Error("Unsupported query mode.");
             }
 
             vectors.push(vec);
@@ -80,7 +107,6 @@ public isolated class PineconeVectorStore {
             vectors: vectors
         };
 
-        // Add namespace if specified
         if self.namespace != "" {
             request.namespace = self.namespace;
         }
@@ -92,40 +118,37 @@ public isolated class PineconeVectorStore {
         }
     }
 
-    public isolated function query(ai:QueryVector queryVector) returns ai:VectorMatch[]|ai:Error {
-        float[]? embedding = queryVector.embedding;
-        ai:SparseVector|string? sparseVector = queryVector.sparseVectorOrQuery;
-        
-        if sparseVector is string {
-            sparseVector = bm25(sparseVector);
-        }
-
+    public isolated function query(ai:EmbeddingVector queryVector) returns ai:VectorMatch[]|ai:Error {
         vector:QueryRequest request = {
-            topK: 2
+            topK: 2,
+            includeMetadata: true
         };
 
-        if embedding is float[] {
-            request.vector = embedding;
-        }
-        
-        if sparseVector is ai:SparseVector && self.queryMode == ai:SPARSE {
-            request.sparseVector = sparseVector;
-        }
-        
-        if self.queryMode == ai:HYBRID {
-            if embedding !is float[] || sparseVector !is ai:SparseVector {
-                return error ai:Error("sparse and dense values are not provided");
+        if queryVector is ai:DenseVector {
+            if self.queryMode == ai:HYBRID {
+                return error ai:Error("Hybrid search requires both dense and sparse vectors, but only dense vector provided.");
             }
-            request.vector = embedding;
-            request.sparseVector = sparseVector;
+            request.vector = queryVector;
+        } else if queryVector is ai:SparseVector {
+            if self.queryMode == ai:HYBRID {
+                return error ai:Error("Hybrid search requires both dense and sparse vectors, but only sparse vector provided.");
+            }
+            request.sparseVector = queryVector;
+        } else {
+            if self.queryMode != ai:HYBRID {
+                return error ai:Error("Hybrid embedding provided, but query mode is not set to HYBRID.");
+            }
+            if queryVector.dense.length() == 0 || queryVector.sparse.indices.length() == 0 {
+                return error ai:Error("Both dense and sparse vectors must be present for hybrid search.");
+            }
+            request.vector = queryVector.dense;
+            request.sparseVector = queryVector.sparse;
         }
 
-        // Add namespace if specified
         if self.namespace != "" {
             request.namespace = self.namespace;
         }
 
-        // Add filters if specified
         map<anydata> localFilterMap = {};
         lock {
             localFilterMap = check convertFilters(self.filters.clone());
@@ -138,12 +161,12 @@ public isolated class PineconeVectorStore {
         if response is error {
             return error ai:Error("Failed to obtain matching vectors", response);
         }
-        
+
         vector:QueryMatch[]? matches = response?.matches;
         if matches is () {
             return [];
         }
-        
+
         return from vector:QueryMatch item in matches
             select {
                 score: item?.score ?: 0.0,
@@ -155,7 +178,6 @@ public isolated class PineconeVectorStore {
             };
     }
 
-    // Delete vectors by reference document ID
     public isolated function delete(string refDocId) returns ai:Error? {
         map<anydata> filter = {
             "document": {
