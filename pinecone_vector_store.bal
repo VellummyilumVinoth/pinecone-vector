@@ -28,6 +28,7 @@ import ballerinax/pinecone.vector;
 # - queryMode: The search mode (DENSE, SPARSE, or HYBRID).
 # - namespace: Optional namespace to isolate vectors within Pinecone.
 # - filters: Metadata filters applied during search.
+# - similarityTopK: Number of top similar vectors to return in queries.
 public isolated class VectorStore {
     *ai:VectorStore;
 
@@ -180,7 +181,7 @@ public isolated class VectorStore {
 
         map<anydata> localFilterMap = {};
         lock {
-            localFilterMap = check convertFilters(self.filters.clone());
+            localFilterMap = check convertPineconeFilters(self.filters.clone());
         }
         if localFilterMap.length() > 0 {
             request.filter = localFilterMap;

@@ -16,11 +16,11 @@
 
 import ballerina/ai;
 
-# Converts standard comparison operators to MongoDB/Pinecone filter operators
+# Converts standard comparison operators to Pinecone filter operators
 #
 # + operator - The standard operator to convert (!=, ==, >, <, >=, <=, in, nin)
-# + return - The corresponding MongoDB/Pinecone operator string or an error if unsupported
-public isolated function convertOperator(string operator) returns string|ai:Error {
+# + return - The corresponding Pinecone operator string or an error if unsupported
+public isolated function convertPineconeOperator(string operator) returns string|ai:Error {
     match operator {
         "!=" => {
             return "$ne"; // Not equal
@@ -53,11 +53,11 @@ public isolated function convertOperator(string operator) returns string|ai:Erro
     }
 }
 
-# Converts logical condition operators to MongoDB/Pinecone condition operators
+# Converts logical condition operators to Pinecone condition operators
 #
 # + condition - The logical condition to convert (and, or)
-# + return - The corresponding MongoDB/Pinecone condition string or an error if unsupported
-public isolated function convertCondition(string condition) returns string|ai:Error {
+# + return - The corresponding Pinecone condition string or an error if unsupported
+public isolated function convertPineconeCondition(string condition) returns string|ai:Error {
     match condition {
         "and" => {
             return "$and"; // Logical AND operation
@@ -72,11 +72,11 @@ public isolated function convertCondition(string condition) returns string|ai:Er
     }
 }
 
-# Converts metadata filters to MongoDB/Pinecone compatible filter format
+# Converts metadata filters to Pinecone compatible filter format
 #
 # + filters - The metadata filters containing filter conditions and logical operators
 # + return - A map representing the converted filter structure or an error if conversion fails
-public isolated function convertFilters(MetadataFilters filters) returns map<anydata>|ai:Error {
+public isolated function convertPineconeFilters(MetadataFilters filters) returns map<anydata>|ai:Error {
     MetadataFilter[]? rawFilters = filters.filter;
 
     // Return empty map if no filters are provided
@@ -93,7 +93,7 @@ public isolated function convertFilters(MetadataFilters filters) returns map<any
 
         // Convert operator-based filters
         if filter.operator is string {
-            string pineconeOp = check convertOperator(filter.operator ?: "");
+            string pineconeOp = check convertPineconeOperator(filter.operator ?: "");
             filterMap[filter.key] = {[pineconeOp]: filter.value};
         } else {
             // Direct value assignment for non-operator filters
@@ -109,7 +109,7 @@ public isolated function convertFilters(MetadataFilters filters) returns map<any
     } else if filterList.length() > 1 {
         // Handle multiple filters - wrap with logical condition
         string condition = filters.condition ?: "and"; // Default to AND condition
-        string pineconeCondition = check convertCondition(condition);
+        string pineconeCondition = check convertPineconeCondition(condition);
         result[pineconeCondition] = filterList;
     }
 
