@@ -20,21 +20,22 @@ import ballerina/uuid;
 import ballerinax/pinecone.vector;
 
 # Pinecone Vector Store implementation with support for Dense, Sparse, and Hybrid vector search modes.
-# 
+#
 # This class implements the ai:VectorStore interface and integrates with the Pinecone vector database
 # to provide functionality for vector upsert, query, and deletion.
-# 
+#
 # - pineconeClient: Underlying client used to communicate with Pinecone.
 # - queryMode: The search mode (DENSE, SPARSE, or HYBRID).
 # - namespace: Optional namespace to isolate vectors within Pinecone.
 # - filters: Metadata filters applied during search.
-public isolated class PineconeVectorStore {
+public isolated class VectorStore {
     *ai:VectorStore;
 
     private final vector:Client pineconeClient;
     private final ai:VectorStoreQueryMode queryMode;
     private final string namespace;
     private final MetadataFilters filters;
+    private final int similarityTopK;
 
     # Initializes the PineconeVectorStore with the given configuration.
     #
@@ -55,6 +56,7 @@ public isolated class PineconeVectorStore {
         self.queryMode = queryMode;
         self.namespace = conf?.namespace ?: "";
         self.filters = conf.filters.clone() ?: {};
+        self.similarityTopK = conf.similarityTopK;
     }
 
     # Adds the given vector entries to the Pinecone vector store.
@@ -146,7 +148,7 @@ public isolated class PineconeVectorStore {
     # + return - A list of matching ai:VectorMatch values, or an ai:Error on failure.
     public isolated function query(ai:EmbeddingVector queryVector) returns ai:VectorMatch[]|ai:Error {
         vector:QueryRequest request = {
-            topK: 2,
+            topK: self.similarityTopK,
             includeMetadata: true,
             includeValues: true
         };
@@ -198,7 +200,7 @@ public isolated class PineconeVectorStore {
             select {
                 score: item?.score ?: 0.0,
                 document: {
-                    content: (item?.metadata ?: {"document": "No Data"}).get("document").toString(),
+                    content: getDocumentContent(item?.metadata),
                     metadata: item.metadata
                 },
                 embedding: item?.values ?: []
