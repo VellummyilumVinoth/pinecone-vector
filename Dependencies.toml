@@ -348,6 +348,21 @@ modules = [
 
 [[package]]
 org = "ballerinax"
+name = "pinecone"
+version = "0.1.0"
+dependencies = [
+	{org = "ballerina", name = "ai"},
+	{org = "ballerina", name = "log"},
+	{org = "ballerina", name = "uuid"},
+	{org = "ballerinai", name = "observe"},
+	{org = "ballerinax", name = "pinecone.vector"}
+]
+modules = [
+	{org = "ballerinax", packageName = "pinecone", moduleName = "pinecone"}
+]
+
+[[package]]
+org = "ballerinax"
 name = "pinecone.vector"
 version = "1.0.2"
 dependencies = [
@@ -358,20 +373,5 @@ dependencies = [
 ]
 modules = [
 	{org = "ballerinax", packageName = "pinecone.vector", moduleName = "pinecone.vector"}
-]
-
-[[package]]
-org = "vinoth"
-name = "pinecone_vector"
-version = "0.1.0"
-dependencies = [
-	{org = "ballerina", name = "ai"},
-	{org = "ballerina", name = "log"},
-	{org = "ballerina", name = "uuid"},
-	{org = "ballerinai", name = "observe"},
-	{org = "ballerinax", name = "pinecone.vector"}
-]
-modules = [
-	{org = "vinoth", packageName = "pinecone_vector", moduleName = "pinecone_vector"}
 ]
 
