@@ -35,7 +35,7 @@ public isolated class VectorStore {
     private final vector:Client pineconeClient;
     private final ai:VectorStoreQueryMode queryMode;
     private final string namespace;
-    private final MetadataFilters filters;
+    private final ai:MetadataFilters filters;
     private final int similarityTopK;
 
     # Initializes the PineconeVectorStore with the given configuration.
@@ -79,7 +79,7 @@ public isolated class VectorStore {
             vector:Vector vec;
 
             if self.queryMode == ai:DENSE {
-                if embedding is ai:DenseVector {
+                if embedding is ai:Vector {
                     vec = {
                         id: uuid:createRandomUuid(),
                         values: embedding,
@@ -99,7 +99,7 @@ public isolated class VectorStore {
                     return error ai:Error("Sparse mode requires SparseVector embedding.");
                 }
             } else if self.queryMode == ai:HYBRID {
-                if embedding is ai:HybridEmbedding {
+                if embedding is ai:HybridVector {
                     if embedding.dense.length() == 0 && embedding.sparse.indices.length() == 0 {
                         return error ai:Error("Hybrid mode requires both dense and sparse vectors, but one or both are missing.");
                     }
@@ -109,7 +109,7 @@ public isolated class VectorStore {
                         sparseValues: embedding.sparse,
                         metadata
                     };
-                } else if embedding is ai:DenseVector {
+                } else if embedding is ai:Vector {
                     // Accept DenseVector but warn if sparse is expected for hybrid effectiveness
                     vec = {
                         id: uuid:createRandomUuid(),
@@ -147,45 +147,36 @@ public isolated class VectorStore {
     # + queryVector - The embedding vector to query against. Should match the configured query mode.
     #
     # + return - A list of matching ai:VectorMatch values, or an ai:Error on failure.
-    public isolated function query(ai:EmbeddingVector queryVector) returns ai:VectorMatch[]|ai:Error {
+    public isolated function query(ai:VectorStoreQuery queryVector) returns ai:VectorMatch[]|ai:Error {
         vector:QueryRequest request = {
             topK: self.similarityTopK,
             includeMetadata: true,
             includeValues: true
         };
 
-        if queryVector is ai:DenseVector {
+        if queryVector.embeddingVector is ai:Vector {
             if self.queryMode == ai:HYBRID {
                 return error ai:Error("Hybrid search requires both dense and sparse vectors, but only dense vector provided.");
             }
-            request.vector = queryVector;
-        } else if queryVector is ai:SparseVector {
+            request.vector = <ai:Vector>queryVector.embeddingVector;
+        } else if queryVector.embeddingVector is ai:SparseVector {
             if self.queryMode == ai:HYBRID {
                 return error ai:Error("Hybrid search requires both dense and sparse vectors, but only sparse vector provided.");
             }
-            request.sparseVector = queryVector;
+            request.sparseVector = <ai:SparseVector>queryVector.embeddingVector;
         } else {
             if self.queryMode != ai:HYBRID {
                 return error ai:Error("Hybrid embedding provided, but query mode is not set to HYBRID.");
             }
-            if queryVector.dense.length() == 0 || queryVector.sparse.indices.length() == 0 {
-                return error ai:Error("Both dense and sparse vectors must be present for hybrid search.");
-            }
-            request.vector = queryVector.dense;
-            request.sparseVector = queryVector.sparse;
+            request.vector = <ai:Vector>queryVector.embeddingVector;
+            request.sparseVector = <ai:SparseVector>queryVector.embeddingVector;
         }
 
         if self.namespace != "" {
             request.namespace = self.namespace;
         }
 
-        map<anydata> localFilterMap = {};
-        lock {
-            localFilterMap = check convertPineconeFilters(self.filters.clone());
-        }
-        if localFilterMap.length() > 0 {
-            request.filter = localFilterMap;
-        }
+        request.filter = check convertPineconeFilters(<ai:MetadataFilters>queryVector.filters);
 
         vector:QueryResponse|error response = self.pineconeClient->/query.post(request);
         if response is error {

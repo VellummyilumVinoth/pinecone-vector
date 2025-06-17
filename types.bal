@@ -16,23 +16,10 @@
 
 import ballerina/ai;
 
-// Metadata filter for vector search
-public type MetadataFilter record {
-    string key;
-    string operator?; // "==", "!=", ">", "<", ">=", "<=", "in", "nin"
-    anydata value;
-};
-
-// Container for multiple metadata filters
-public type MetadataFilters record {
-    MetadataFilter[] filter?;
-    string condition?; // "and", "or"
-};
-
 // Configuration for Pinecone Vector Store
 public type PineconeConfigs record {
     string namespace?;
-    MetadataFilters filters?;
+    ai:MetadataFilters filters?;
     ai:SparseVector sparseVector?;
     int similarityTopK = 5;
 };

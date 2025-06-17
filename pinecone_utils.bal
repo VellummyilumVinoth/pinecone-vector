@@ -20,34 +20,33 @@ import ballerina/ai;
 #
 # + operator - The standard operator to convert (!=, ==, >, <, >=, <=, in, nin)
 # + return - The corresponding Pinecone operator string or an error if unsupported
-public isolated function convertPineconeOperator(string operator) returns string|ai:Error {
+public isolated function convertPineconeOperator(ai:PineconeOperator operator) returns string|ai:Error {
     match operator {
-        "!=" => {
+        ai:NOT_EQUALS => {
             return "$ne"; // Not equal
         }
-        "==" => {
+        ai:EQUALS => {
             return "$eq"; // Equal
         }
-        ">" => {
+        ai:GREATER_THAN => {
             return "$gt"; // Greater than
         }
-        "<" => {
+        ai:LESS_THAN => {
             return "$lt"; // Less than
         }
-        ">=" => {
+        ai:GREATER_THAN_OR_EQUAL => {
             return "$gte"; // Greater than or equal
         }
-        "<=" => {
+        ai:LESS_THAN_OR_EQUAL => {
             return "$lte"; // Less than or equal
         }
-        "in" => {
+        ai:IN => {
             return "$in"; // Value exists in array
         }
-        "nin" => {
+        ai:NOT_IN => {
             return "$nin"; // Value does not exist in array
         }
         _ => {
-            // Return error for unsupported operators
             return error ai:Error(string `Unsupported filter operator: ${operator}`);
         }
     }
@@ -57,16 +56,15 @@ public isolated function convertPineconeOperator(string operator) returns string
 #
 # + condition - The logical condition to convert (and, or)
 # + return - The corresponding Pinecone condition string or an error if unsupported
-public isolated function convertPineconeCondition(string condition) returns string|ai:Error {
+public isolated function convertPineconeCondition(ai:PineconeCondition condition) returns string|ai:Error {
     match condition {
-        "and" => {
+        ai:AND => {
             return "$and"; // Logical AND operation
         }
-        "or" => {
+        ai:OR => {
             return "$or"; // Logical OR operation
         }
         _ => {
-            // Return error for unsupported conditions
             return error ai:Error(string `Unsupported filter condition: ${condition}`);
         }
     }
@@ -76,10 +74,9 @@ public isolated function convertPineconeCondition(string condition) returns stri
 #
 # + filters - The metadata filters containing filter conditions and logical operators
 # + return - A map representing the converted filter structure or an error if conversion fails
-public isolated function convertPineconeFilters(MetadataFilters filters) returns map<anydata>|ai:Error {
-    MetadataFilter[]? rawFilters = filters.filter;
+public isolated function convertPineconeFilters(ai:MetadataFilters filters) returns map<anydata>|ai:Error {
+    ai:MetadataFilter[]? rawFilters = filters.filter;
 
-    // Return empty map if no filters are provided
     if rawFilters is () || rawFilters.length() == 0 {
         return {};
     }
@@ -87,28 +84,23 @@ public isolated function convertPineconeFilters(MetadataFilters filters) returns
     map<anydata> result = {};
     map<anydata>[] filterList = [];
 
-    // Process each individual filter
-    foreach MetadataFilter filter in rawFilters {
+    foreach ai:MetadataFilter filter in rawFilters {
         map<anydata> filterMap = {};
 
-        // Convert operator-based filters
         if filter.operator is string {
-            string pineconeOp = check convertPineconeOperator(filter.operator ?: "");
+            string pineconeOp = check convertPineconeOperator(<ai:PineconeOperator>filter.operator);
             filterMap[filter.key] = {[pineconeOp]: filter.value};
         } else {
-            // Direct value assignment for non-operator filters
             filterMap[filter.key] = filter.value;
         }
 
         filterList.push(filterMap);
     }
 
-    // Handle single filter case - return the filter directly
     if filterList.length() == 1 {
         return filterList[0];
     } else if filterList.length() > 1 {
-        // Handle multiple filters - wrap with logical condition
-        string condition = filters.condition ?: "and"; // Default to AND condition
+        ai:PineconeCondition condition = filters.condition ?: ai:AND; // Default to AND condition
         string pineconeCondition = check convertPineconeCondition(condition);
         result[pineconeCondition] = filterList;
     }
