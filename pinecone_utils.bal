@@ -89,7 +89,9 @@ public isolated function convertPineconeFilters(ai:MetadataFilters filters) retu
 
         if filter.operator is string {
             string pineconeOp = check convertPineconeOperator(<ai:PineconeOperator>filter.operator);
-            filterMap[filter.key] = {[pineconeOp]: filter.value};
+            map<anydata> operatorMap = {};
+            operatorMap[pineconeOp] = filter.value;
+            filterMap[filter.key] = operatorMap;
         } else {
             filterMap[filter.key] = filter.value;
         }
@@ -106,17 +108,6 @@ public isolated function convertPineconeFilters(ai:MetadataFilters filters) retu
     }
 
     return result;
-}
-
-# Placeholder function for BM25 (Best Matching 25) algorithm implementation
-# Currently returns an empty sparse vector structure
-#
-# + document - The document text to process for BM25 scoring
-# + return - A sparse vector with empty indices and values arrays
-public isolated function bm25(string document) returns ai:SparseVector {
-    // TODO: Implement actual BM25 algorithm
-    // BM25 is a ranking function used for document retrieval and text analysis
-    return {indices: [], values: []};
 }
 
 # Helper function to safely extract document content from metadata

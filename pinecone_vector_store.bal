@@ -109,16 +109,8 @@ public isolated class VectorStore {
                         sparseValues: embedding.sparse,
                         metadata
                     };
-                } else if embedding is ai:Vector {
-                    // Accept DenseVector but warn if sparse is expected for hybrid effectiveness
-                    vec = {
-                        id: uuid:createRandomUuid(),
-                        values: embedding,
-                        sparseValues: bm25(entry.document.content), // Auto-generate sparse if needed
-                        metadata
-                    };
                 } else {
-                    return error ai:Error("Hybrid mode requires either HybridEmbedding or DenseVector with auto-generated sparse values.");
+                    return error ai:Error("Hybrid mode requires DenseVector and SparseVector embedding.");
                 }
             } else {
                 return error ai:Error("Unsupported query mode.");
@@ -176,7 +168,9 @@ public isolated class VectorStore {
             request.namespace = self.namespace;
         }
 
-        request.filter = check convertPineconeFilters(<ai:MetadataFilters>queryVector.filters);
+        if queryVector.filters is ai:MetadataFilters {
+            request.filter = check convertPineconeFilters(<ai:MetadataFilters>queryVector.filters);
+        }
 
         vector:QueryResponse|error response = self.pineconeClient->/query.post(request);
         if response is error {
