@@ -22,4 +22,5 @@ public type PineconeConfigs record {
     ai:MetadataFilters filters?;
     ai:SparseVector sparseVector?;
     int similarityTopK = 5;
+    string id?;
 };
