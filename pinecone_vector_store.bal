@@ -16,7 +16,6 @@
 
 import ballerina/ai;
 import ballerina/log;
-import ballerina/uuid;
 import ballerinax/pinecone.vector;
 
 # Pinecone Vector Store implementation with support for Dense, Sparse, and Hybrid vector search modes.
@@ -38,7 +37,6 @@ public isolated class VectorStore {
     private final string namespace;
     private final ai:MetadataFilters filters;
     private final int similarityTopK;
-    private final string id;
 
     # Initializes the PineconeVectorStore with the given configuration.
     #
@@ -60,7 +58,6 @@ public isolated class VectorStore {
         self.namespace = conf?.namespace ?: "";
         self.filters = conf.filters.clone() ?: {filters: []};
         self.similarityTopK = conf.similarityTopK;
-        self.id = conf.id ?: uuid:createRandomUuid();
     }
 
     # Adds the given vector entries to the Pinecone vector store.
@@ -83,7 +80,7 @@ public isolated class VectorStore {
             if self.queryMode == ai:DENSE {
                 if embedding is ai:Vector {
                     vec = {
-                        id: self.id,
+                        id: entry.id,
                         values: embedding,
                         metadata
                     };
@@ -93,7 +90,7 @@ public isolated class VectorStore {
             } else if self.queryMode == ai:SPARSE {
                 if embedding is ai:SparseVector {
                     vec = {
-                        id: self.id,
+                        id: entry.id,
                         sparseValues: embedding,
                         metadata
                     };
@@ -107,7 +104,7 @@ public isolated class VectorStore {
                         "but one or both are missing.");
                     }
                     vec = {
-                        id: self.id,
+                        id: entry.id,
                         values: embedding.dense,
                         sparseValues: embedding.sparse,
                         metadata
