@@ -20,12 +20,12 @@ import ballerina/ai;
 #
 # + operator - The standard operator to convert (!=, ==, >, <, >=, <=, in, nin)
 # + return - The corresponding Pinecone operator string or an error if unsupported
-public isolated function convertPineconeOperator(ai:PineconeOperator operator) returns string|ai:Error {
+public isolated function convertPineconeOperator(ai:MetadataFilterOperator operator) returns string|ai:Error {
     match operator {
-        ai:NOT_EQUALS => {
+        ai:NOT_EQUAL => {
             return "$ne"; // Not equal
         }
-        ai:EQUALS => {
+        ai:EQUAL => {
             return "$eq"; // Equal
         }
         ai:GREATER_THAN => {
@@ -56,7 +56,7 @@ public isolated function convertPineconeOperator(ai:PineconeOperator operator) r
 #
 # + condition - The logical condition to convert (and, or)
 # + return - The corresponding Pinecone condition string or an error if unsupported
-public isolated function convertPineconeCondition(ai:PineconeCondition condition) returns string|ai:Error {
+public isolated function convertPineconeCondition(ai:MetadataFilterCondition condition) returns string|ai:Error {
     match condition {
         ai:AND => {
             return "$and"; // Logical AND operation
@@ -75,56 +75,63 @@ public isolated function convertPineconeCondition(ai:PineconeCondition condition
 # + filters - The metadata filters containing filter conditions and logical operators
 # + return - A map representing the converted filter structure or an error if conversion fails
 public isolated function convertPineconeFilters(ai:MetadataFilters filters) returns map<anydata>|ai:Error {
-    ai:MetadataFilter[]? rawFilters = filters.filter;
+    (ai:MetadataFilters|ai:MetadataFilter)[]? rawFilters = filters.filters;
 
     if rawFilters is () || rawFilters.length() == 0 {
         return {};
     }
 
-    map<anydata> result = {};
     map<anydata>[] filterList = [];
 
-    foreach ai:MetadataFilter filter in rawFilters {
-        map<anydata> filterMap = {};
+    foreach (ai:MetadataFilters|ai:MetadataFilter) filter in rawFilters {
+        if filter is ai:MetadataFilter {
+            map<anydata> filterMap = {};
 
-        if filter.operator is string {
-            string pineconeOp = check convertPineconeOperator(<ai:PineconeOperator>filter.operator);
-            map<anydata> operatorMap = {};
-            operatorMap[pineconeOp] = filter.value;
-            filterMap[filter.key] = operatorMap;
+            if filter.operator != ai:EQUAL {
+                string pineconeOp = check convertPineconeOperator(filter.operator);
+                map<anydata> operatorMap = {};
+                operatorMap[pineconeOp] = filter.value;
+                filterMap[filter.key] = operatorMap;
+            } else {
+                filterMap[filter.key] = filter.value;
+            }
+
+            filterList.push(filterMap);
         } else {
-            filterMap[filter.key] = filter.value;
+            map<anydata> nestedFilter = check convertPineconeFilters(filter);
+            if nestedFilter.length() > 0 {
+                filterList.push(nestedFilter);
+            }
         }
-
-        filterList.push(filterMap);
     }
 
-    if filterList.length() == 1 {
+    if filterList.length() == 0 {
+        return {};
+    } else if filterList.length() == 1 {
         return filterList[0];
-    } else if filterList.length() > 1 {
-        ai:PineconeCondition condition = filters.condition ?: ai:AND; // Default to AND condition
-        string pineconeCondition = check convertPineconeCondition(condition);
+    } else {
+        string pineconeCondition = check convertPineconeCondition(filters.condition);
+        map<anydata> result = {};
         result[pineconeCondition] = filterList;
+        return result;
     }
-
-    return result;
 }
 
-# Helper function to safely extract document content from metadata
+# Extracts the document content from the metadata
 #
 # + metadata - The metadata map that may contain document content
 # + return - The document content as a string, or a default message if not found
 public isolated function getDocumentContent(map<anydata>? metadata) returns string {
     if metadata is () {
-        return "No document content available";
+        return "No metadata provided";
     }
 
     anydata documentContent = metadata["document"];
     if documentContent is string {
         return documentContent;
     } else if documentContent is () {
-        return "No document content available";
+        return "Document field not found in metadata";
     } else {
-        return documentContent.toString();
+        return "Document field is not a string: " + documentContent.toString();
     }
 }

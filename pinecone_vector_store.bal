@@ -24,11 +24,12 @@ import ballerinax/pinecone.vector;
 # This class implements the ai:VectorStore interface and integrates with the Pinecone vector database
 # to provide functionality for vector upsert, query, and deletion.
 #
-# - pineconeClient: Underlying client used to communicate with Pinecone.
-# - queryMode: The search mode (DENSE, SPARSE, or HYBRID).
-# - namespace: Optional namespace to isolate vectors within Pinecone.
-# - filters: Metadata filters applied during search.
-# - similarityTopK: Number of top similar vectors to return in queries.
+# - pineconeClient: Underlying client used to communicate with Pinecone
+# - queryMode: The search mode (DENSE, SPARSE, or HYBRID)
+# - namespace: Optional namespace to isolate vectors within Pinecone
+# - filters: Metadata filters applied during search
+# - similarityTopK: Number of top similar vectors to return in queries
+# - id: Unique identifier for the vector store instance
 public isolated class VectorStore {
     *ai:VectorStore;
 
@@ -37,13 +38,14 @@ public isolated class VectorStore {
     private final string namespace;
     private final ai:MetadataFilters filters;
     private final int similarityTopK;
+    private final string id;
 
     # Initializes the PineconeVectorStore with the given configuration.
     #
-    # + serviceUrl - URL of the Pinecone API service.
-    # + apiKey - Pinecone API key for authentication.
-    # + queryMode - Vector query mode (defaults to ai:DENSE).
-    # + conf - Additional Pinecone configurations like namespace and filters.
+    # + serviceUrl - URL of the Pinecone API service
+    # + apiKey - Pinecone API key for authentication
+    # + queryMode - Vector query mode (defaults to ai:DENSE)
+    # + conf - Additional Pinecone configurations like namespace and filters
     #
     # + return - An ai:Error if the initialization fails, else ().
     public isolated function init(string serviceUrl, string apiKey, ai:VectorStoreQueryMode queryMode = ai:DENSE,
@@ -56,15 +58,15 @@ public isolated class VectorStore {
         self.pineconeClient = pineconeIndexClient;
         self.queryMode = queryMode;
         self.namespace = conf?.namespace ?: "";
-        self.filters = conf.filters.clone() ?: {};
+        self.filters = conf.filters.clone() ?: {filters: []};
         self.similarityTopK = conf.similarityTopK;
+        self.id = conf.id ?: uuid:createRandomUuid();
     }
 
     # Adds the given vector entries to the Pinecone vector store.
     #
-    # + entries - An array of ai:VectorEntry values to be added.
-    #
-    # + return - An ai:Error if vector addition fails, else ().
+    # + entries - An array of ai:VectorEntry values to be added
+    # + return - An ai:Error if vector addition fails, else ()
     public isolated function add(ai:VectorEntry[] entries) returns ai:Error? {
         if entries.length() == 0 {
             return;
@@ -74,14 +76,14 @@ public isolated class VectorStore {
         foreach ai:VectorEntry entry in entries {
             map<anydata> metadata = entry.document?.metadata ?: {};
             metadata["document"] = entry.document.content;
-            ai:EmbeddingVector embedding = entry.embedding;
+            ai:Embedding embedding = entry.embedding;
 
             vector:Vector vec;
 
             if self.queryMode == ai:DENSE {
                 if embedding is ai:Vector {
                     vec = {
-                        id: uuid:createRandomUuid(),
+                        id: self.id,
                         values: embedding,
                         metadata
                     };
@@ -91,7 +93,7 @@ public isolated class VectorStore {
             } else if self.queryMode == ai:SPARSE {
                 if embedding is ai:SparseVector {
                     vec = {
-                        id: uuid:createRandomUuid(),
+                        id: self.id,
                         sparseValues: embedding,
                         metadata
                     };
@@ -101,10 +103,11 @@ public isolated class VectorStore {
             } else if self.queryMode == ai:HYBRID {
                 if embedding is ai:HybridVector {
                     if embedding.dense.length() == 0 && embedding.sparse.indices.length() == 0 {
-                        return error ai:Error("Hybrid mode requires both dense and sparse vectors, but one or both are missing.");
+                        return error ai:Error("Hybrid mode requires both dense and sparse vectors, " +
+                        "but one or both are missing.");
                     }
                     vec = {
-                        id: uuid:createRandomUuid(),
+                        id: self.id,
                         values: embedding.dense,
                         sparseValues: embedding.sparse,
                         metadata
@@ -136,9 +139,8 @@ public isolated class VectorStore {
 
     # Queries Pinecone using the provided embedding vector and returns the top matches.
     #
-    # + queryVector - The embedding vector to query against. Should match the configured query mode.
-    #
-    # + return - A list of matching ai:VectorMatch values, or an ai:Error on failure.
+    # + queryVector - The embedding vector to query against. Should match the configured query mode
+    # + return - A list of matching ai:VectorMatch values, or an ai:Error on failure
     public isolated function query(ai:VectorStoreQuery queryVector) returns ai:VectorMatch[]|ai:Error {
         vector:QueryRequest request = {
             topK: self.similarityTopK,
@@ -146,22 +148,22 @@ public isolated class VectorStore {
             includeValues: true
         };
 
-        if queryVector.embeddingVector is ai:Vector {
+        if queryVector.embedding is ai:Vector {
             if self.queryMode == ai:HYBRID {
                 return error ai:Error("Hybrid search requires both dense and sparse vectors, but only dense vector provided.");
             }
-            request.vector = <ai:Vector>queryVector.embeddingVector;
-        } else if queryVector.embeddingVector is ai:SparseVector {
+            request.vector = <ai:Vector>queryVector.embedding;
+        } else if queryVector.embedding is ai:SparseVector {
             if self.queryMode == ai:HYBRID {
                 return error ai:Error("Hybrid search requires both dense and sparse vectors, but only sparse vector provided.");
             }
-            request.sparseVector = <ai:SparseVector>queryVector.embeddingVector;
+            request.sparseVector = <ai:SparseVector>queryVector.embedding;
         } else {
             if self.queryMode != ai:HYBRID {
                 return error ai:Error("Hybrid embedding provided, but query mode is not set to HYBRID.");
             }
-            request.vector = <ai:Vector>queryVector.embeddingVector;
-            request.sparseVector = <ai:SparseVector>queryVector.embeddingVector;
+            request.vector = <ai:Vector>queryVector.embedding;
+            request.sparseVector = <ai:SparseVector>queryVector.embedding;
         }
 
         if self.namespace != "" {
@@ -184,7 +186,7 @@ public isolated class VectorStore {
 
         return from vector:QueryMatch item in matches
             select {
-                score: item?.score ?: 0.0,
+                similarityScore: item?.score ?: 0.0,
                 document: {
                     content: getDocumentContent(item?.metadata),
                     metadata: item.metadata
@@ -193,20 +195,13 @@ public isolated class VectorStore {
             };
     }
 
-    # Deletes vector entries from the store that match the given reference document ID.
+    # Deletes vector entries from the store by their reference document ID.
     #
-    # + refDocId - The document ID to match against the metadata field "document".
-    #
-    # + return - An ai:Error if the deletion fails, else ().
+    # + refDocId - The unique document ID used to identify and delete the corresponding vector entry.
+    # + return - An `ai:Error` if the deletion fails; otherwise, `()` is returned indicating success.
     public isolated function delete(string refDocId) returns ai:Error? {
-        map<anydata> filter = {
-            "document": {
-                "$eq": refDocId
-            }
-        };
-
         vector:DeleteRequest request = {
-            filter: filter
+            ids: [refDocId]
         };
 
         if self.namespace != "" {
