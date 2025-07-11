@@ -117,21 +117,22 @@ public isolated function convertPineconeFilters(ai:MetadataFilters filters) retu
     }
 }
 
-# Extracts the document content from the metadata
+
+# Extracts the content from the metadata
 #
-# + metadata - The metadata map that may contain document content
-# + return - The document content as a string, or a default message if not found
-public isolated function getDocumentContent(map<anydata>? metadata) returns string {
+# + metadata - The metadata map that may contain content
+# + return - The content as a string, or a default message if not found
+public isolated function getContent(map<anydata>? metadata) returns string {
     if metadata is () {
         return "No metadata provided";
     }
 
-    anydata documentContent = metadata["document"];
-    if documentContent is string {
-        return documentContent;
-    } else if documentContent is () {
-        return "Document field not found in metadata";
+    anydata content = metadata["content"];
+    if content is string {
+        return content;
+    } else if content is () {
+        return "Content field not found in metadata";
     } else {
-        return "Document field is not a string: " + documentContent.toString();
+        return "Content field is not a string: " + content.toString();
     }
 }

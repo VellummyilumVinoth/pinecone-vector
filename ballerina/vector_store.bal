@@ -16,8 +16,8 @@
 
 import ballerina/ai;
 import ballerina/log;
-import ballerinax/pinecone.vector;
 import ballerina/uuid;
+import ballerinax/pinecone.vector;
 
 # Pinecone Vector Store implementation with support for Dense, Sparse, and Hybrid vector search modes.
 #
@@ -44,12 +44,19 @@ public isolated class VectorStore {
     # + serviceUrl - URL of the Pinecone API service
     # + apiKey - Pinecone API key for authentication
     # + queryMode - Vector query mode (defaults to ai:DENSE)
-    # + conf - Additional Pinecone configurations like namespace and filters
-    #
+    # + conf - Additional Pinecone configurations
+    # + httpConfig - HTTP client configuration for the Pinecone connection
+    # 
     # + return - An ai:Error if the initialization fails, else ().
-    public isolated function init(string serviceUrl, string apiKey, ai:VectorStoreQueryMode queryMode = ai:DENSE,
-            PineconeConfigs conf = {}) returns ai:Error? {
-        vector:Client|error pineconeIndexClient = new ({apiKey}, serviceUrl);
+    public isolated function init(@display {label: "Service URL"} string serviceUrl, 
+            @display {label: "API Key"} string apiKey, 
+            @display {label: "Query Mode"} ai:VectorStoreQueryMode queryMode = ai:DENSE,
+            @display {label: "Pinecone Configuration"} PineconeConfigs conf = {}, 
+            @display {label: "HTTP Configuration"} vector:ConnectionConfig httpConfig = {}) returns ai:Error? {
+
+        vector:ApiKeysConfig apiKeyConfig = {apiKey: apiKey};
+
+        vector:Client|error pineconeIndexClient = new (apiKeyConfig, serviceUrl, httpConfig);
         if pineconeIndexClient is error {
             return error ai:Error("Failed to initialize pinecone vector store", pineconeIndexClient);
         }
@@ -72,8 +79,8 @@ public isolated class VectorStore {
 
         vector:Vector[] vectors = [];
         foreach ai:VectorEntry entry in entries {
-            map<anydata> metadata = entry.document?.metadata ?: {};
-            metadata["document"] = entry.document.content;
+            map<anydata> metadata = entry.chunk?.metadata ?: {};
+            metadata["content"] = entry.chunk.content;
             ai:Embedding embedding = entry.embedding;
 
             vector:Vector vec;
@@ -151,12 +158,14 @@ public isolated class VectorStore {
 
         if queryVector.embedding is ai:Vector {
             if self.queryMode == ai:HYBRID {
-                return error ai:Error("Hybrid search requires both dense and sparse vectors, but only dense vector provided.");
+                return error ai:Error("Hybrid search requires both dense and sparse vectors, " +
+                "but only dense vector provided.");
             }
             request.vector = <ai:Vector>queryVector.embedding;
         } else if queryVector.embedding is ai:SparseVector {
             if self.queryMode == ai:HYBRID {
-                return error ai:Error("Hybrid search requires both dense and sparse vectors, but only sparse vector provided.");
+                return error ai:Error("Hybrid search requires both dense and sparse vectors, " +
+                "but only sparse vector provided.");
             }
             request.sparseVector = <ai:SparseVector>queryVector.embedding;
         } else {
@@ -187,13 +196,35 @@ public isolated class VectorStore {
 
         return from vector:QueryMatch item in matches
             select {
-                similarityScore: item?.score ?: 0.0,
-                document: {
-                    content: getDocumentContent(item?.metadata),
-                    metadata: item.metadata
+                id: item.id,
+                embedding: item?.values ?: [],
+
+                chunk: <ai:TextChunk>{
+                    content: getContent(item?.metadata),
+                    metadata: self.createMetadata(item?.metadata)
                 },
-                embedding: item?.values ?: []
+                similarityScore: item?.score ?: 0.0
             };
+    }
+
+    # Converts Pinecone vector metadata to AI metadata format.
+    #
+    # + metadata - The vector metadata from Pinecone response, can be null
+    # + return - Converted ai:Metadata object, or null if input metadata is null
+    private isolated function createMetadata(vector:VectorMetadata? metadata) returns ai:Metadata? {
+        if metadata is () {
+            return;
+        }
+        ai:Metadata chunkMetadata = {};
+        foreach string key in metadata.keys() {
+            anydata value = metadata[key];
+            if value is json {
+                chunkMetadata[key] = value;
+            } else {
+                chunkMetadata[key] = value.toJson();
+            }
+        }
+        return chunkMetadata;
     }
 
     # Deletes vector entries from the store by their reference document ID.

@@ -1,11 +1,57 @@
-# Ballerina generates this directory during the compilation of a package.
-# It contains compiler-generated artifacts and the final executable if this is an application package.
-target/
+# Compiled class file
+*.class
 
-# Ballerina maintains the compiler-generated source code here.
-# Remove this if you want to commit generated sources.
-generated/
+# Log file
+*.log
 
-# Contains configuration values used during development time.
-# See https://ballerina.io/learn/provide-values-to-configurable-variables/ for more details.
-Config.toml
+# BlueJ files
+*.ctxt
+
+# Mobile Tools for Java (J2ME)
+.mtj.tmp/
+
+# Package Files #
+*.jar
+*.war
+*.nar
+*.ear
+*.zip
+*.tar.gz
+*.rar
+
+# Ballerina
+Ballerina.lock
+
+# generated files
+target
+.ballerina
+
+# gradle
+.gradle
+build/
+gradle-app.setting
+!gradle-wrapper.jar
+.gradletasknamecache
+
+# mac
+.DS_Store
+.classpath
+.project
+.settings
+.vscode
+.idea
+
+# ignore examples auto generated files
+examples/**/Dependencies.toml
+examples/**/Config.toml
+examples/**/target
+ballerina/Config.toml
+ballerina/target
+ballerina/sample*
+ballerina/openapi*
+ballerina/schema*
+$(pwd)
+docker.env
+
+# ignore ballerina installer in github runner
+*.deb
