@@ -1,0 +1,12 @@
+[package]
+authors = ["Ballerina"]
+distribution = "2201.12.0"
+keywords = ["AI", "Agent", "Pinecone", "Vector", "Store"]
+license = ["Apache-2.0"]
+name = "ai.pinecone"
+org = "ballerinax"
+repository = "https://github.com/ballerina-platform/module-ballerinax-ai.pinecone"
+version = "1.0.0"
+
+[platform.java21]
+graalvmCompatible = true

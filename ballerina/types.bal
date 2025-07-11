@@ -16,10 +16,14 @@
 
 import ballerina/ai;
 
-// Configuration for Pinecone Vector Store
+# Represents the configuration options for interacting with a Pinecone vector store.
 public type PineconeConfigs record {
+    # Optional namespace to isolate vectors within Pinecone
     string namespace?;
+    # Metadata filters applied during search
     ai:MetadataFilters filters?;
+    # Optional sparse vector for hybrid search operations
     ai:SparseVector sparseVector?;
+    # Number of top similar vectors to return in queries
     int similarityTopK = 5;
 };
